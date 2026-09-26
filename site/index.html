@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AML Alert Prioritization — 10x Engineers</title>
+<meta name="description" content="Exploratory data analysis and modeling for the WIUT Hackathon 2026 fintech track: predicting which AML alerts get escalated.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ee;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --accent: #2a78d6; --good: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --accent: #3987e5; --good: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --accent: #3987e5; --good: #0ca30c;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 0 16px 80px; }
+header.hero { padding: 56px 0 32px; }
+.eyebrow { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 8px; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+h2 { font-size: 26px; margin: 64px 0 8px; letter-spacing: -0.01em; }
+h3 { font-size: 17px; margin: 0 0 4px; }
+p { margin: 0 0 14px; max-width: 72ch; }
+.lead { font-size: 18px; color: var(--ink-2); }
+.sub { color: var(--ink-2); margin-bottom: 20px; }
+code { font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; margin-top: 20px; }
+nav.toc a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--axis); }
+nav.toc a:hover { color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 24px 0 8px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.tile .v { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; }
+.tile .l { font-size: 13px; color: var(--ink-2); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 12px; min-width: 0; }
+.card p.cap { font-size: 14px; color: var(--ink-2); margin: 8px 0 4px; }
+.chart { position: relative; height: 280px; }
+.chart.tall { height: 340px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin: 2px 0 8px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.insight { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 20px 0; }
+.insight strong { display: block; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 13px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px 8px; }
+ol.findings { padding-left: 20px; } ol.findings li { margin-bottom: 10px; max-width: 72ch; }
+footer { margin-top: 64px; font-size: 13px; color: var(--muted); }
+.themebtn { position: fixed; top: 12px; right: 12px; background: var(--surface); color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+</style>
+</head>
+<body>
+<button class="themebtn" id="themebtn" type="button">Toggle theme</button>
+<main>
+<header class="hero">
+  <p class="eyebrow">WIUT Hackathon 2026 · Fintech / AI in Finance · Team 10x Engineers</p>
+  <h1>Which AML alerts get escalated?</h1>
+  <p class="lead">Automated monitoring raises anti-money-laundering alerts from a customer's transaction history; specialists dismiss most of them and escalate a few. We explored 7 million transactions behind 14,000 labeled alerts to learn what separates the two, and built a model that ranks new alerts by their probability of escalation.</p>
+  <div class="tiles" id="tiles"></div>
+  <nav class="toc">
+    <a href="#approach">Approach</a><a href="#data">Dataset</a><a href="#target">Target</a><a href="#tx">Transaction behaviour</a><a href="#time">Activity before a signal</a><a href="#diff">Escalated vs dismissed</a><a href="#model">Features &amp; model</a><a href="#conclusion">Conclusion</a>
+  </nav>
+</header>
+
+<section id="approach">
+  <h2>Our approach</h2>
+  <p>Each alert (<code>signal_id</code>) comes with a variable-length history of transactions from the 180 days before the alert date. The task is to rank alerts by their chance of escalation, measured by ROC-AUC. Our workflow:</p>
+  <ol class="findings">
+    <li><strong>Explore</strong> the alerts and the relational transaction table: coverage, timing artifacts, amount distributions by type and direction, and how escalated alerts differ from dismissed ones.</li>
+    <li><strong>Summarise each history into one row</strong>: counts, amount statistics, recent-window activity, burst behaviour, amount histograms, and — the key idea from EDA — <em>relative</em> features that compare each transaction type with the same customer's own typical level.</li>
+    <li><strong>Validate honestly</strong>: the test alerts are a random sample from the same period as training (not a time split), so we used stratified 5-fold cross-validation repeated over several seeds.</li>
+    <li><strong>Model</strong> with gradient-boosted trees (LightGBM), lightly blended with CatBoost and a regularised logistic regression.</li>
+  </ol>
+</section>
+
+<section id="data">
+  <h2>The dataset</h2>
+  <p class="sub">Synthetic, localised data. Two alert tables and two transaction tables linked by <code>signal_id</code>.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>File</th><th class="num">Rows</th><th>Columns</th></tr></thead>
+    <tbody id="filetable"></tbody>
+  </table></div>
+  <div class="insight"><strong>Data quality</strong>No missing values and no duplicate rows. Every alert has at least one transaction (1 – 2,279; median 461). Transactions span the 180 days before the alert date and end at the alert date, apart from 840 rows (21 alerts) timestamped later on the alert day itself. Test alerts cover exactly the same dates as training alerts, which is why we validate with random folds rather than a time split.</div>
+</section>
+
+<section id="target">
+  <h2>The target</h2>
+  <p class="sub" id="targetsub"></p>
+  <div class="grid2">
+    <div class="card"><h3>Alerts per month</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Train</span><span><i style="background:var(--s2)"></i>Test</span></div>
+      <div class="chart"><canvas id="c_month_n"></canvas></div>
+      <p class="cap">Train and test follow the same monthly pattern (busier from mid-2025 to mid-2026) — the test set is a random sample, not a future period.</p></div>
+    <div class="card"><h3>Escalation rate per month</h3>
+      <div class="chart" style="margin-top:28px"><canvas id="c_month_rate"></canvas></div>
+      <p class="cap">The rate stays between 14% and 21% with no trend, so the alert date alone carries almost no signal.</p></div>
+  </div>
+</section>
+
+<section id="tx">
+  <h2>Transaction behaviour</h2>
+  <p class="sub">Most activity is incoming card and bank-transfer traffic. Cash is 6% of transactions, international transfers 0.5%.</p>
+  <div class="grid2">
+    <div class="card"><h3>Transactions by type and direction</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Incoming (kirim)</span><span><i style="background:var(--s2)"></i>Outgoing (chiqim)</span></div>
+      <div class="chart"><canvas id="c_mix"></canvas></div>
+      <p class="cap">Money flows in about three times as often as it flows out, for every type.</p></div>
+    <div class="card"><h3>Amount index distribution by type</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Card</span><span><i style="background:var(--s2)"></i>Bank transfer</span><span><i style="background:var(--s3)"></i>Cash</span><span><i style="background:var(--s4)"></i>International</span></div>
+      <div class="chart"><canvas id="c_amt"></canvas></div>
+      <p class="cap">Each type has its own size level: card &lt; transfer &lt; cash &lt; international. Distributions have hard lower floors (e.g. card ≈ −2.27, transfer ≈ −2.91).</p></div>
+    <div class="card"><h3>Transactions by hour of day</h3>
+      <div class="chart"><canvas id="c_hour"></canvas></div>
+      <p class="cap">Flat across the day except hour 23, which has three times the normal volume.</p></div>
+    <div class="card"><h3>Inside hour 23: transactions per minute</h3>
+      <div class="chart"><canvas id="c_min"></canvas></div>
+      <p class="cap">The spike is concentrated in 23:57 – 23:59: bursts of many small transactions just before midnight.</p></div>
+  </div>
+  <div class="insight"><strong>Late-night bursts</strong><span id="burstnote"></span></div>
+</section>
+
+<section id="time">
+  <h2>Activity immediately before a signal</h2>
+  <div class="grid2">
+    <div class="card"><h3>Average transactions per alert, by days before the alert</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Dismissed</span><span><i style="background:var(--s2)"></i>Escalated</span></div>
+      <div class="chart tall"><canvas id="c_lag"></canvas></div>
+      <p class="cap">Day 0 (the alert day, ≈ 41 transactions per alert) is omitted so the rest of the window stays readable.</p></div>
+    <div class="card"><h3>Incoming vs outgoing, by days before the alert</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Incoming</span><span><i style="background:var(--s2)"></i>Outgoing</span></div>
+      <div class="chart tall"><canvas id="c_lagdir"></canvas></div>
+      <p class="cap">Daily activity peaks about four months before the alert and then declines steadily toward it, in both directions — until the burst on the alert day itself.</p></div>
+  </div>
+  <div class="insight"><strong>The alert day dominates, but it is not what separates the classes</strong>On average an alert's history ends with a burst of ~41 transactions on the alert day itself; the last transaction is typically seconds before midnight. Escalated alerts are slightly busier across the whole window, but their timing <em>shape</em> is the same as dismissed ones, and features built on the last few transactions or on recent-vs-baseline activity scored near chance (AUC ≈ 0.49 – 0.61). Timing is how alerts are <em>triggered</em>, not how they are <em>judged</em>.</div>
+</section>
+
+<section id="diff">
+  <h2>Escalated vs dismissed alerts</h2>
+  <p class="sub">Type mix is identical between the classes (see table). What differs is the <em>size profile</em> of each customer's transactions.</p>
+  <div class="grid2">
+    <div class="card"><h3>Escalation rate by cash-deposit vs bank-transfer size</h3>
+      <div class="chart"><canvas id="c_cash"></canvas></div>
+      <p class="cap" id="cashcap"></p></div>
+    <div class="card"><h3>Escalation rate by outgoing bank-transfer size</h3>
+      <div class="chart"><canvas id="c_bo"></canvas></div>
+      <p class="cap" id="bocap"></p></div>
+    <div class="card"><h3>Escalation rate by number of tiny card transactions</h3>
+      <div class="chart"><canvas id="c_tiny"></canvas></div>
+      <p class="cap">Card transactions at the very bottom of the size range (index &lt; −2.2) — typical of card-testing — roughly double the escalation rate.</p></div>
+    <div class="card"><h3>Escalation rate by history length</h3>
+      <div class="chart"><canvas id="c_ntx"></canvas></div>
+      <p class="cap">Busier customers are escalated slightly more often (15% → 19% across deciles of transaction count).</p></div>
+  </div>
+  <h3 style="margin-top:24px">Average share of each transaction type per alert</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Type</th><th class="num">Dismissed</th><th class="num">Escalated</th></tr></thead>
+    <tbody id="sharetable"></tbody>
+  </table></div>
+  <div class="insight"><strong>Relative size is the signal</strong>Raw amount levels mostly measure how "big" a customer is — all eight direction×type averages are strongly correlated (ρ 0.5 – 0.84). The escalation signal lives in the <em>differences</em>: a customer whose cash deposits are large compared with their own bank transfers is almost three times as likely to be escalated (10% → 29%). Tree models are poor at learning differences of two columns, so we engineered them explicitly.</div>
+</section>
+
+<section id="model">
+  <h2>Features and modelling ideas motivated by the EDA</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Feature family</th><th>Why (EDA observation)</th><th class="num">OOF AUC alone</th></tr></thead>
+    <tbody>
+      <tr><td>Counts &amp; amount statistics per direction, type, and direction×type; recent windows 1–90 days</td><td>Customers differ in volume and size level; busier customers escalate slightly more</td><td class="num">0.640</td></tr>
+      <tr><td>Relative amounts: each group's mean/median/q90 minus the customer's overall level; all pairwise group differences</td><td>Escalation depends on <em>relative</em> size (cash vs transfers), not absolute</td><td class="num">0.648</td></tr>
+      <tr><td>Amount histograms per type × burst/normal; tiny-card and floor counts</td><td>Tiny card transactions and value floors carry signal; burst amounts differ</td><td class="num">0.631</td></tr>
+      <tr><td>Recent-vs-baseline activity, pass-through (in→out within 1–72h), burst events, first/last use of each type</td><td>Classic AML typologies; tested and found weak here</td><td class="num">0.611</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:16px">We combined the families (857 features), ranked them by LightGBM gain, and kept the top 100, which beat using all of them (0.663 vs 0.654) by removing noise. Final model:</p>
+  <div class="grid2">
+    <div class="card"><h3>Cross-validated ROC-AUC (5-fold × 5 seeds)</h3><div class="chart"><canvas id="c_models"></canvas></div>
+      <p class="cap">Final submission = probability blend 0.8 LightGBM + 0.1 CatBoost + 0.1 logistic regression.</p></div>
+    <div class="card"><h3>Top 15 features (LightGBM gain)</h3><div class="chart tall"><canvas id="c_imp"></canvas></div></div>
+  </div>
+</section>
+
+<section id="conclusion">
+  <h2>Conclusion</h2>
+  <ol class="findings">
+    <li><strong>Escalation is a weak, diffuse signal.</strong> 17.2% of alerts are escalated, steady over time; no single feature exceeds AUC 0.62, and our best model reaches ≈ 0.66 cross-validated.</li>
+    <li><strong>What matters is the shape of a customer's amounts, relative to themselves</strong> — large cash deposits and card spending relative to bank transfers raise escalation risk; large bank transfers on their own lower it.</li>
+    <li><strong>Tiny card transactions</strong> at the bottom of the size range double the escalation rate (16% → 30%+).</li>
+    <li><strong>Bursts before midnight</strong> are everywhere (99% of alerts, 8% of transactions) and mark how alerts are triggered — but timing, recency and pass-through features barely separate the classes.</li>
+    <li><strong>Modelling lesson:</strong> explicit difference features + feature selection beat throwing hundreds of raw aggregates at the model.</li>
+  </ol>
+</section>
+<footer>Team 10x Engineers (EC6D41A5) · WIUT Hackathon 2026 · Data are synthetic and contain no real customer records. Reproducible notebook in the project repository.</footer>
+</main>
+
+<script id="eda" type="application/json">{"overview": {"train_signals": 14000, "test_signals": 6000, "train_tx": 6987663, "test_tx": 3027575, "pos": 2405, "pos_rate": 0.1718, "date_min": "2025-01-01", "date_max": "2026-12-31", "tx_min": "2024-07-05 00:31:36", "tx_max": "2026-12-31 00:00:00"}, "monthly": {"month": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12"], "n": [505, 517, 505, 470, 466, 497, 746, 735, 696, 856, 790, 805, 767, 704, 778, 608, 635, 634, 427, 419, 395, 337, 331, 377], "rate": [0.1703, 0.1857, 0.1762, 0.2, 0.1652, 0.1429, 0.1635, 0.1701, 0.1394, 0.1717, 0.1544, 0.1752, 0.1643, 0.1605, 0.1992, 0.2122, 0.1701, 0.1435, 0.1756, 0.179, 0.1747, 0.1751, 0.1994, 0.191], "n_test": [226, 207, 221, 215, 204, 195, 327, 304, 301, 354, 341, 356, 326, 298, 340, 265, 283, 257, 179, 186, 167, 154, 145, 149]}, "tx_per_signal": {"edges": [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300], "esc": [142, 190, 270, 293, 338, 303, 249, 220, 138, 93, 64, 38, 24, 18, 11, 6, 3, 4, 0, 0, 1, 0, 0], "dis": [757, 1094, 1459, 1605, 1562, 1391, 1129, 845, 601, 425, 298, 182, 101, 56, 42, 21, 13, 4, 2, 3, 3, 1, 1]}, "tx_decile": {"label": ["0\u2013141", "141\u2013238", "238\u2013316", "316\u2013388", "388\u2013461", "461\u2013539", "539\u2013627", "627\u2013735", "735\u2013901", "901\u20132279"], "rate": [0.1494, 0.1605, 0.1491, 0.1538, 0.1799, 0.1698, 0.1826, 0.1937, 0.196, 0.1831]}, "mix": {"types": ["bank_otkazmasi", "karta", "naqd", "xalqaro"], "kirim": [2045432, 2882850, 334221, 24377], "chiqim": [709255, 875947, 108125, 7456]}, "type_share_by_target": {"bank_otkazmasi": {"esc": 0.4092, "dis": 0.4123}, "karta": {"esc": 0.5215, "dis": 0.5211}, "naqd": {"esc": 0.0648, "dis": 0.0621}, "xalqaro": {"esc": 0.0045, "dis": 0.0044}}, "amount_hist": {"edges": [-3.0, -2.9, -2.8, -2.7, -2.6, -2.5, -2.4, -2.3, -2.2, -2.1, -2.0, -1.9, -1.8, -1.7, -1.6, -1.5, -1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5.0, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 6.0], "karta": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0058, 0.0386, 0.0488, 0.0451, 0.0602, 0.0835, 0.1136, 0.1525, 0.1988, 0.2514, 0.3134, 0.3767, 0.4383, 0.4933, 0.542, 0.5716, 0.5926, 0.5941, 0.584, 0.5547, 0.5218, 0.4766, 0.4354, 0.3868, 0.3392, 0.2945, 0.2533, 0.2143, 0.1816, 0.1514, 0.1257, 0.1048, 0.0848, 0.0711, 0.0578, 0.0464, 0.0385, 0.0305, 0.025, 0.0198, 0.0163, 0.013, 0.0103, 0.0085, 0.0068, 0.0052, 0.0044, 0.0037, 0.0028, 0.0022, 0.0017, 0.0014, 0.001, 0.0009, 0.0008, 0.0006, 0.0004, 0.0004, 0.0003, 0.0002, 0.0002, 0.0002, 0.0001, 0.0001, 0.0004, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "bank_otkazmasi": [0.0156, 0.0271, 0.0144, 0.0148, 0.0179, 0.0228, 0.0277, 0.0328, 0.0392, 0.0469, 0.0562, 0.0668, 0.0787, 0.0928, 0.1072, 0.1261, 0.1432, 0.1629, 0.1846, 0.2077, 0.2303, 0.2541, 0.2752, 0.2972, 0.3165, 0.3348, 0.3479, 0.3579, 0.3669, 0.3698, 0.3714, 0.3688, 0.3622, 0.3526, 0.3377, 0.3257, 0.3102, 0.2938, 0.2741, 0.2543, 0.2351, 0.2151, 0.197, 0.1791, 0.1616, 0.1439, 0.128, 0.1139, 0.1009, 0.0889, 0.079, 0.0673, 0.0595, 0.0513, 0.0441, 0.0385, 0.0331, 0.0275, 0.0237, 0.0203, 0.0173, 0.0143, 0.0124, 0.0099, 0.0085, 0.0073, 0.0062, 0.0051, 0.0043, 0.0034, 0.003, 0.0024, 0.0021, 0.0017, 0.0013, 0.0012, 0.0009, 0.0008, 0.0006, 0.0006, 0.0004, 0.0003, 0.0003, 0.0002, 0.0002, 0.0002, 0.0001, 0.0001, 0.0001, 0.0001], "naqd": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0008, 0.0144, 0.0401, 0.0618, 0.0881, 0.1121, 0.1358, 0.1824, 0.2336, 0.286, 0.3409, 0.3769, 0.4137, 0.4454, 0.4644, 0.4753, 0.4835, 0.4804, 0.4789, 0.4696, 0.4605, 0.4445, 0.4148, 0.3935, 0.3637, 0.3346, 0.3016, 0.2719, 0.2365, 0.2079, 0.1771, 0.1499, 0.1262, 0.1039, 0.0873, 0.0732, 0.0592, 0.0462, 0.0364, 0.028, 0.0225, 0.0181, 0.0147, 0.0104, 0.0083, 0.006, 0.0044, 0.0038, 0.0027, 0.0021, 0.0016, 0.0011, 0.0009, 0.0007, 0.0004, 0.0004, 0.0003, 0.0002, 0.0001, 0.0001, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "xalqaro": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0022, 0.0022, 0.0094, 0.023, 0.0377, 0.044, 0.0604, 0.0786, 0.0947, 0.1098, 0.133, 0.1673, 0.1959, 0.2198, 0.2667, 0.2937, 0.323, 0.3519, 0.367, 0.3922, 0.4183, 0.4133, 0.4026, 0.3912, 0.3579, 0.3812, 0.3563, 0.3365, 0.3117, 0.2944, 0.273, 0.2733, 0.2566, 0.2428, 0.2211, 0.2032, 0.1749, 0.1705, 0.1585, 0.1305, 0.1311, 0.1186, 0.1076, 0.0852, 0.0881, 0.0749, 0.0645, 0.0604, 0.0453, 0.0406, 0.0374, 0.0362, 0.0277, 0.0226, 0.0261, 0.0192, 0.017, 0.0116, 0.0107, 0.0075, 0.0082, 0.0057, 0.0044, 0.0047, 0.0022, 0.0022]}, "hour": [271707, 268705, 268016, 268732, 269100, 268872, 267753, 267817, 268287, 267983, 268867, 267480, 268094, 268174, 270918, 267517, 268046, 267764, 267091, 267289, 267407, 267593, 267484, 816967], "minute23": [4324, 4440, 4582, 4497, 4484, 4386, 4619, 4446, 4476, 4443, 4509, 4426, 4455, 4446, 4440, 4454, 4556, 4500, 4468, 4452, 4398, 4404, 4444, 4481, 4446, 4506, 4390, 4526, 4410, 4429, 4512, 4450, 4442, 4473, 4338, 4385, 4358, 4524, 4485, 4460, 4435, 4386, 4492, 4598, 4462, 4379, 4487, 4427, 4447, 4512, 4452, 4480, 4366, 4462, 4422, 4424, 4479, 177310, 192838, 192845], "burst": {"share_tx": 0.081, "signals_with": 0.9929, "event_size_hist": [15916, 1157, 1134, 2428, 5312, 3202, 753, 52], "event_size_edges": [1, 2, 5, 10, 20, 50, 100, 200, 1000], "amt_mean_burst": -0.497, "amt_mean_normal": -0.101}, "lag_profile": {"lag": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179], "esc": [42.013, 1.029, 0.999, 1.052, 1.071, 1.141, 1.163, 1.165, 1.161, 1.16, 1.241, 1.245, 1.26, 1.307, 1.287, 1.319, 1.329, 1.41, 1.449, 1.454, 1.509, 1.511, 1.507, 1.609, 1.565, 1.59, 1.67, 1.685, 1.709, 1.732, 1.777, 1.784, 1.812, 1.806, 1.865, 1.894, 1.906, 1.988, 1.999, 2.026, 2.007, 2.08, 2.173, 2.144, 2.163, 2.173, 2.2, 2.224, 2.219, 2.341, 2.299, 2.279, 2.294, 2.416, 2.411, 2.444, 2.484, 2.497, 2.567, 2.511, 2.578, 2.618, 2.568, 2.651, 2.706, 2.629, 2.69, 2.741, 2.77, 2.743, 2.822, 2.815, 2.745, 2.899, 2.821, 2.893, 2.892, 2.908, 2.998, 2.974, 3.01, 3.032, 2.971, 3.044, 3.065, 3.0, 3.055, 3.075, 3.105, 3.096, 3.166, 3.175, 3.16, 3.107, 3.177, 3.235, 3.172, 3.285, 3.228, 3.23, 3.289, 3.322, 3.252, 3.291, 3.334, 3.341, 3.297, 3.322, 3.3, 3.334, 3.31, 3.311, 3.301, 3.36, 3.335, 3.304, 3.303, 3.366, 3.381, 3.338, 3.393, 3.387, 3.305, 3.337, 3.356, 3.37, 3.419, 3.331, 3.38, 3.38, 3.363, 3.361, 3.36, 3.344, 3.375, 3.339, 3.343, 3.283, 3.338, 3.378, 3.294, 3.291, 3.288, 3.311, 3.35, 3.319, 3.328, 3.258, 3.322, 3.3, 3.258, 3.301, 3.246, 3.25, 3.275, 3.232, 3.296, 3.214, 3.204, 3.213, 3.182, 3.138, 3.105, 3.154, 3.091, 3.119, 3.133, 3.089, 3.109, 3.017, 3.099, 3.02, 3.05, 3.008, 3.076, 3.038, 2.965, 3.022, 3.027, 2.264], "dis": [40.368, 0.991, 1.006, 1.03, 1.036, 1.106, 1.064, 1.102, 1.134, 1.146, 1.172, 1.21, 1.239, 1.231, 1.275, 1.272, 1.317, 1.339, 1.364, 1.374, 1.398, 1.435, 1.444, 1.487, 1.516, 1.538, 1.545, 1.586, 1.605, 1.618, 1.653, 1.67, 1.675, 1.713, 1.742, 1.775, 1.777, 1.82, 1.848, 1.86, 1.894, 1.923, 1.964, 1.974, 2.006, 2.025, 2.069, 2.067, 2.109, 2.099, 2.136, 2.141, 2.215, 2.247, 2.254, 2.285, 2.297, 2.317, 2.329, 2.364, 2.377, 2.382, 2.427, 2.429, 2.479, 2.498, 2.48, 2.53, 2.54, 2.572, 2.595, 2.606, 2.654, 2.634, 2.677, 2.664, 2.689, 2.71, 2.786, 2.791, 2.755, 2.768, 2.796, 2.846, 2.843, 2.892, 2.867, 2.908, 2.894, 2.889, 2.924, 2.954, 2.956, 2.948, 3.001, 2.939, 3.013, 3.021, 3.021, 3.017, 3.058, 3.053, 3.048, 3.062, 3.098, 3.09, 3.078, 3.111, 3.128, 3.13, 3.133, 3.13, 3.133, 3.147, 3.128, 3.157, 3.15, 3.175, 3.175, 3.177, 3.19, 3.166, 3.165, 3.189, 3.189, 3.176, 3.181, 3.192, 3.178, 3.206, 3.16, 3.18, 3.231, 3.181, 3.178, 3.181, 3.151, 3.155, 3.163, 3.159, 3.164, 3.167, 3.144, 3.14, 3.171, 3.133, 3.145, 3.118, 3.121, 3.11, 3.126, 3.11, 3.077, 3.097, 3.076, 3.075, 3.084, 3.069, 3.046, 3.038, 3.019, 3.006, 3.017, 2.985, 3.002, 2.983, 2.993, 2.955, 2.954, 2.936, 2.938, 2.908, 2.912, 2.9, 2.882, 2.881, 2.868, 2.844, 2.813, 2.102]}, "lag_dir": {"kirim": [30.534, 0.75, 0.762, 0.781, 0.788, 0.837, 0.818, 0.845, 0.857, 0.865, 0.897, 0.924, 0.94, 0.934, 0.971, 0.976, 0.997, 1.019, 1.041, 1.043, 1.068, 1.097, 1.094, 1.132, 1.152, 1.17, 1.192, 1.212, 1.221, 1.232, 1.261, 1.274, 1.279, 1.308, 1.331, 1.343, 1.359, 1.394, 1.414, 1.424, 1.442, 1.474, 1.51, 1.514, 1.534, 1.56, 1.577, 1.576, 1.607, 1.619, 1.627, 1.648, 1.697, 1.732, 1.737, 1.749, 1.76, 1.777, 1.794, 1.809, 1.82, 1.831, 1.855, 1.868, 1.899, 1.913, 1.908, 1.942, 1.953, 1.968, 1.981, 2.006, 2.019, 2.025, 2.046, 2.042, 2.062, 2.073, 2.134, 2.139, 2.117, 2.123, 2.137, 2.163, 2.188, 2.196, 2.203, 2.211, 2.217, 2.216, 2.242, 2.276, 2.267, 2.255, 2.288, 2.269, 2.306, 2.325, 2.312, 2.314, 2.351, 2.353, 2.333, 2.343, 2.37, 2.374, 2.369, 2.386, 2.395, 2.397, 2.405, 2.396, 2.39, 2.4, 2.393, 2.405, 2.412, 2.422, 2.436, 2.443, 2.441, 2.415, 2.421, 2.441, 2.43, 2.431, 2.445, 2.436, 2.43, 2.463, 2.412, 2.419, 2.472, 2.42, 2.435, 2.435, 2.41, 2.418, 2.426, 2.423, 2.412, 2.407, 2.397, 2.396, 2.428, 2.394, 2.404, 2.389, 2.381, 2.394, 2.381, 2.393, 2.352, 2.375, 2.355, 2.342, 2.367, 2.342, 2.338, 2.32, 2.317, 2.291, 2.291, 2.287, 2.289, 2.271, 2.286, 2.249, 2.274, 2.241, 2.245, 2.233, 2.224, 2.21, 2.208, 2.204, 2.191, 2.185, 2.164, 1.621], "chiqim": [10.117, 0.247, 0.242, 0.253, 0.253, 0.275, 0.263, 0.268, 0.281, 0.284, 0.287, 0.292, 0.303, 0.311, 0.306, 0.304, 0.322, 0.332, 0.338, 0.345, 0.348, 0.351, 0.361, 0.376, 0.373, 0.376, 0.375, 0.391, 0.402, 0.406, 0.413, 0.415, 0.419, 0.421, 0.432, 0.452, 0.44, 0.455, 0.46, 0.464, 0.471, 0.476, 0.489, 0.489, 0.499, 0.49, 0.514, 0.518, 0.521, 0.521, 0.537, 0.517, 0.532, 0.544, 0.544, 0.563, 0.568, 0.571, 0.576, 0.58, 0.591, 0.592, 0.596, 0.599, 0.619, 0.608, 0.609, 0.625, 0.627, 0.634, 0.653, 0.636, 0.651, 0.655, 0.656, 0.661, 0.662, 0.671, 0.688, 0.683, 0.682, 0.69, 0.689, 0.717, 0.693, 0.714, 0.696, 0.726, 0.714, 0.709, 0.724, 0.716, 0.724, 0.72, 0.743, 0.722, 0.735, 0.742, 0.745, 0.739, 0.747, 0.747, 0.75, 0.758, 0.769, 0.759, 0.747, 0.761, 0.763, 0.768, 0.759, 0.765, 0.772, 0.783, 0.771, 0.777, 0.764, 0.786, 0.775, 0.762, 0.784, 0.789, 0.768, 0.774, 0.787, 0.778, 0.777, 0.78, 0.782, 0.773, 0.783, 0.792, 0.781, 0.789, 0.776, 0.773, 0.774, 0.759, 0.767, 0.774, 0.774, 0.781, 0.771, 0.773, 0.774, 0.771, 0.772, 0.753, 0.774, 0.748, 0.768, 0.75, 0.754, 0.748, 0.755, 0.76, 0.753, 0.752, 0.735, 0.748, 0.731, 0.738, 0.74, 0.727, 0.728, 0.735, 0.731, 0.728, 0.707, 0.709, 0.72, 0.694, 0.712, 0.708, 0.707, 0.704, 0.693, 0.69, 0.686, 0.509]}, "cash_vs_transfer": {"rate": [0.0998, 0.1174, 0.1174, 0.1306, 0.1526, 0.1667, 0.1893, 0.223, 0.2399, 0.2905], "auc": 0.6168}, "transfer_level": {"rate": [0.2299, 0.212, 0.2026, 0.1975, 0.1628, 0.1787, 0.1476, 0.1476, 0.1295, 0.1128], "auc": 0.5728}, "tiny_card": {"label": ["0", "1", "2", "3\u20135", "6+"], "rate": [0.1589, 0.3004, 0.3294, 0.3073, 0.2564], "n": [12778, 749, 255, 179, 39]}, "bank_floor": {"label": ["0", "1", "2\u20133", "4+"], "rate": [0.184, 0.0967, 0.0882, 0.12], "n": [12021, 1137, 567, 275]}}</script>
+<script id="rep" type="application/json">{"oof_auc": {"lgbm": 0.6632742803506064, "cat": 0.6543220740892152, "lr": 0.6536028953622744}, "blend_auc": 0.6630728887908707, "weights": {"lgbm": 0.8, "cat": 0.1, "lr": 0.1}, "features": ["d_kirim_naqd__chiqim_bank_otkazmasi", "d_chiqim_karta__chiqim_bank_otkazmasi", "rel_chiqim_karta_q90", "d_kirim_naqd__bank_otkazmasi", "rel_kirim_naqd_q90", "d_kirim_bank_otkazmasi__kirim_naqd", "d_chiqim_bank_otkazmasi__naqd", "tiny_card_min", "bank_otkazmasi_min", "kirim_min", "dm_chiqim_karta__chiqim_bank_otkazmasi", "all_min", "rel_naqd_q90", "rel_karta_q90", "karta_min", "nonburst_min", "rel_chiqim_karta_max", "d_bank_otkazmasi__naqd", "tiny_card_last_lag", "rel_karta_max", "rel_bank_otkazmasi_q90", "d_kirim_bank_otkazmasi__naqd", "sh_kart_N_h0", "kirim_naqd_max", "rel_naqd_max", "share_chiqim_naqd", "rel_kirim_naqd_max", "relz_kirim_naqd_mean", "w90_min", "chiqim_min", "rel_kirim_naqd_mean", "rel_chiqim_bank_otkazmasi_q90", "d_chiqim_bank_otkazmasi__karta", "d_chiqim_karta__bank_otkazmasi", "dm_kirim_naqd__chiqim_bank_otkazmasi", "sh_naqd_N_h9", "rel_kirim_karta_max", "sh_bank_B_h4", "d_chiqim_bank_otkazmasi__bank_otkazmasi", "sh_bank_N_h4", "rel30_chiqim_bank_otkazmasi_mean", "h2_kart_N_h0", "kirim_naqd_q75", "tiny_card_n", "doy", "share_kirim_naqd", "d_chiqim_karta__karta", "d_kirim_karta__karta", "rel_chiqim_karta_mean", "sh_kart_B_h5", "d_chiqim_bank_otkazmasi__chiqim_naqd", "rel_chiqim_naqd_q90", "relz_chiqim_karta_mean", "d_kirim_bank_otkazmasi__chiqim_karta", "rel_karta_median", "dm_kirim_bank_otkazmasi__chiqim_bank_otkazmasi", "dm_chiqim_karta__karta", "karta_sumexp", "naqd_sumexp", "rel30_kirim_bank_otkazmasi_mean", "d_kirim_karta__kirim_naqd", "chiqim_karta_q25", "share_chiqim_karta", "d_kirim_karta__chiqim_karta", "rel_chiqim_naqd_max", "rel_naqd_mean", "rel_kirim_mean", "rel30_chiqim_karta_mean", "chiqim_bank_otkazmasi_std", "rel_chiqim_karta_median", "dm_chiqim_karta__chiqim_xalqaro", "karta_q25", "dm_kirim_karta__chiqim_karta", "chiqim_naqd_size", "rel30_chiqim_naqd_mean", "w1_min", "chiqim_naqd_std", "rel_karta_mean", "rel_chiqim_median", "dm_kirim_bank_otkazmasi__chiqim_karta", "gap_max", "dm_chiqim_karta__chiqim_naqd", "rel_chiqim_bank_otkazmasi_mean", "chiqim_naqd_max", "dm_chiqim_bank_otkazmasi__bank_otkazmasi", "dm_chiqim_bank_otkazmasi__chiqim_naqd", "d_kirim_naqd__naqd", "rel30_kirim_naqd_mean", "bank_otkazmasi_std", "dm_chiqim_bank_otkazmasi__karta", "sh_bank_B_h8", "d_karta__bank_otkazmasi", "dm_kirim_bank_otkazmasi__kirim_naqd", "chiqim_karta_max", "rel_kirim_bank_otkazmasi_q90", "h_kir_bank_N_h8", "dm_chiqim_bank_otkazmasi__naqd", "d_kirim_bank_otkazmasi__chiqim_bank_otkazmasi", "chiqim_karta_q75", "burst_min"], "importance": [["d_chiqim_karta__chiqim_bank_otkazmasi", 0.05], ["d_kirim_naqd__chiqim_bank_otkazmasi", 0.0444], ["rel_chiqim_karta_q90", 0.0334], ["d_kirim_naqd__bank_otkazmasi", 0.0327], ["rel_kirim_naqd_q90", 0.0309], ["d_kirim_bank_otkazmasi__kirim_naqd", 0.0283], ["bank_otkazmasi_min", 0.023], ["tiny_card_min", 0.0212], ["all_min", 0.0199], ["kirim_min", 0.0198], ["d_chiqim_bank_otkazmasi__naqd", 0.0197], ["rel_karta_q90", 0.0184], ["rel_naqd_q90", 0.0176], ["dm_chiqim_karta__chiqim_bank_otkazmasi", 0.0161], ["rel_chiqim_karta_max", 0.0153], ["dm_chiqim_karta__chiqim_xalqaro", 0.0132], ["kirim_naqd_max", 0.0121], ["nonburst_min", 0.0121], ["karta_min", 0.0117], ["karta_sumexp", 0.0117]]}</script>
+<script>
+const D = JSON.parse(document.getElementById('eda').textContent);
+const R = JSON.parse(document.getElementById('rep').textContent);
+const fmt = n => n.toLocaleString('en-US');
+const pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+const TYPE = { karta: 'Card', bank_otkazmasi: 'Bank transfer', naqd: 'Cash', xalqaro: 'International' };
+
+// theme toggle (persisted per viewer)
+const root = document.documentElement;
+try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch (e) {}
+document.getElementById('themebtn').onclick = () => {
+  const dark = getComputedStyle(root).colorScheme === 'dark';
+  root.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+  drawAll();
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+
+const O = D.overview;
+document.getElementById('tiles').innerHTML = [
+  [fmt(O.train_signals + O.test_signals), 'alerts (14,000 train · 6,000 test)'],
+  [(O.train_tx + O.test_tx).toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }), 'transactions'],
+  [pct(O.pos_rate), 'of training alerts escalated'],
+  [R.blend_auc.toFixed(3), 'cross-validated ROC-AUC'],
+].map(([v, l]) => `<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+
+document.getElementById('filetable').innerHTML = [
+  ['train_signals.csv', O.train_signals, '<code>signal_id</code>, <code>signal_sanasi</code> (alert date), <code>eskalatsiya</code> (target)'],
+  ['test_signals.csv', O.test_signals, '<code>signal_id</code>, <code>signal_sanasi</code>'],
+  ['train_transactions.parquet', O.train_tx, '<code>signal_id</code>, <code>tranzaksiya_vaqti</code> (timestamp), <code>kirim_chiqim</code> (in/out), <code>tranzaksiya_turi</code> (card / bank transfer / cash / international), <code>miqdor_indeksi</code> (standardised size)'],
+  ['test_transactions.parquet', O.test_tx, 'same as train'],
+].map(r => `<tr><td><code>${r[0]}</code></td><td class="num">${fmt(r[1])}</td><td>${r[2]}</td></tr>`).join('');
+
+document.getElementById('targetsub').textContent =
+  `${fmt(O.pos)} of ${fmt(O.train_signals)} training alerts (${pct(O.pos_rate)}) were escalated — a moderately imbalanced binary target. ROC-AUC is rank-based, so we did not rebalance.`;
+
+const B = D.burst;
+document.getElementById('burstnote').textContent =
+  `${pct(B.share_tx)} of all transactions fall in 23:57–00:00, and ${pct(B.signals_with)} of alerts contain at least one such burst. A burst-day can hold hundreds of transactions; burst amounts are smaller than normal ones (mean index ${B.amt_mean_burst} vs ${B.amt_mean_normal}). We built burst features, but on their own they separate escalated from dismissed alerts only weakly (16% vs 18%).`;
+
+document.getElementById('sharetable').innerHTML = Object.entries(D.type_share_by_target)
+  .map(([k, v]) => `<tr><td>${TYPE[k]}</td><td class="num">${pct(v.dis)}</td><td class="num">${pct(v.esc)}</td></tr>`).join('');
+document.getElementById('cashcap').textContent =
+  `Deciles of (mean cash deposit − mean bank transfer), low → high. Escalation climbs from ${pct(D.cash_vs_transfer.rate[0], 0)} to ${pct(D.cash_vs_transfer.rate[9], 0)}; single-feature AUC ${D.cash_vs_transfer.auc}.`;
+document.getElementById('bocap').textContent =
+  `Deciles of mean outgoing transfer size, small → large. Larger transfers mean fewer escalations (${pct(D.transfer_level.rate[0], 0)} → ${pct(D.transfer_level.rate[9], 0)}).`;
+
+const charts = [];
+function css(v) { return getComputedStyle(root).getPropertyValue(v).trim(); }
+function base(extra = {}) {
+  const ink2 = css('--ink-2'), grid = css('--grid'), muted = css('--muted');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: ink2, borderColor: css('--axis'), borderWidth: 1, padding: 10, boxPadding: 4 } },
+    scales: {
+      x: { grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 12 } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted } },
+    },
+    ...extra,
+  };
+}
+function bar(color, data, label) { return { label, data, backgroundColor: color, borderRadius: 4, borderSkipped: 'bottom', barPercentage: 0.8, categoryPercentage: 0.8 }; }
+function line(color, data, label) { return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.2 }; }
+function mk(id, cfg) { charts.push(new Chart(document.getElementById(id), cfg)); }
+const pctAxis = { ticks: { callback: v => (v * 100).toFixed(0) + '%' } };
+const pctTip = { callbacks: { label: c => `${c.dataset.label || 'Escalation rate'}: ${(c.parsed.y * 100).toFixed(1)}%` } };
+function deep(a, b) { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) { a[k] = deep(a[k] || {}, b[k]); } else a[k] = b[k]; } return a; }
+function opt(extra) { return deep(base(), extra); }
+
+function drawAll() {
+  charts.splice(0).forEach(c => c.destroy());
+  const s1 = css('--s1'), s2 = css('--s2'), s3 = css('--s3'), s4 = css('--s4');
+  const M = D.monthly;
+  mk('c_month_n', { type: 'bar', data: { labels: M.month, datasets: [bar(s1, M.n, 'Train'), bar(s2, M.n_test, 'Test')] }, options: opt({ scales: { x: { stacked: true }, y: { stacked: true } } }) });
+  mk('c_month_rate', { type: 'line', data: { labels: M.month, datasets: [line(s2, M.rate, 'Escalation rate')] }, options: opt({ scales: { y: { min: 0, max: 0.3, ...pctAxis } }, plugins: { tooltip: pctTip } }) });
+  const X = D.mix;
+  mk('c_mix', { type: 'bar', data: { labels: X.types.map(t => TYPE[t]), datasets: [bar(s1, X.kirim, 'Incoming'), bar(s2, X.chiqim, 'Outgoing')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e6).toFixed(1) + 'M' } } } }) });
+  const A = D.amount_hist, mids = A.edges.slice(0, -1).map((e, i) => ((e + A.edges[i + 1]) / 2).toFixed(1));
+  mk('c_amt', { type: 'line', data: { labels: mids, datasets: [line(s1, A.karta, 'Card'), line(s2, A.bank_otkazmasi, 'Bank transfer'), line(s3, A.naqd, 'Cash'), line(s4, A.xalqaro, 'International')] }, options: opt({ scales: { x: { title: { display: true, text: 'miqdor_indeksi', color: css('--muted') }, ticks: { maxTicksLimit: 10 } }, y: { title: { display: true, text: 'density', color: css('--muted') } } } }) });
+  mk('c_hour', { type: 'bar', data: { labels: D.hour.map((_, i) => i), datasets: [bar(D.hour.map((_, i) => i === 23 ? s2 : s1), D.hour, 'Transactions')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e3) + 'k' } } } }) });
+  mk('c_min', { type: 'bar', data: { labels: D.minute23.map((_, i) => ':' + String(i).padStart(2, '0')), datasets: [bar(D.minute23.map((_, i) => i >= 57 ? s2 : s1), D.minute23, 'Transactions')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e3) + 'k' } } } }) });
+  const L = D.lag_profile;
+  mk('c_lag', { type: 'line', data: { labels: L.lag.slice(1), datasets: [line(s1, L.dis.slice(1), 'Dismissed'), line(s2, L.esc.slice(1), 'Escalated')] }, options: opt({ scales: { x: { reverse: true, title: { display: true, text: 'days before alert', color: css('--muted') }, ticks: { maxTicksLimit: 10 } } } }) });
+  mk('c_lagdir', { type: 'line', data: { labels: L.lag.slice(1), datasets: [line(s1, D.lag_dir.kirim.slice(1), 'Incoming'), line(s2, D.lag_dir.chiqim.slice(1), 'Outgoing')] }, options: opt({ scales: { x: { reverse: true, title: { display: true, text: 'days before alert', color: css('--muted') }, ticks: { maxTicksLimit: 10 } } } }) });
+  const dec = [...Array(10)].map((_, i) => 'D' + (i + 1));
+  const rateBar = (id, labels, data, xt) => mk(id, { type: 'bar', data: { labels, datasets: [bar(s1, data, 'Escalation rate')] }, options: opt({ scales: { y: { min: 0, ...pctAxis }, x: { title: { display: !!xt, text: xt, color: css('--muted') } } }, plugins: { tooltip: pctTip } }) });
+  rateBar('c_cash', dec, D.cash_vs_transfer.rate, 'decile: cash deposits small → large relative to transfers');
+  rateBar('c_bo', dec, D.transfer_level.rate, 'decile: outgoing transfer size small → large');
+  rateBar('c_tiny', D.tiny_card.label, D.tiny_card.rate, 'tiny card transactions per alert');
+  rateBar('c_ntx', D.tx_decile.label, D.tx_decile.rate, 'transactions per alert (decile)');
+  const MR = R.oof_auc;
+  mk('c_models', { type: 'bar', data: { labels: ['Logistic reg.', 'CatBoost', 'LightGBM', 'Final blend'], datasets: [bar([s1, s1, s1, s2], [MR.lr, MR.cat, MR.lgbm, R.blend_auc], 'ROC-AUC')] }, options: opt({ indexAxis: 'y', scales: { x: { min: 0.6, max: 0.68, grid: { display: true, color: css('--grid') } }, y: { grid: { display: false } } }, plugins: { tooltip: { callbacks: { label: c => 'ROC-AUC ' + c.parsed.x.toFixed(4) } } } }) });
+  const I = R.importance.slice(0, 15);
+  mk('c_imp', { type: 'bar', data: { labels: I.map(r => r[0]), datasets: [bar(s1, I.map(r => r[1]), 'Share of gain')] }, options: opt({ indexAxis: 'y', scales: { x: { grid: { display: true, color: css('--grid') }, ticks: { callback: v => (v * 100).toFixed(0) + '%' } }, y: { grid: { display: false }, ticks: { font: { size: 11 }, autoSkip: false } } }, plugins: { tooltip: { callbacks: { label: c => (c.parsed.x * 100).toFixed(1) + '% of total gain' } } } }) });
+}
+drawAll();
+</script>
+</body>
+</html>

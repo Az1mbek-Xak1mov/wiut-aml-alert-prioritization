@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AML Alert Prioritization — 10x Engineers</title>
+<meta name="description" content="Exploratory data analysis and modeling for the WIUT Hackathon 2026 fintech track: predicting which AML alerts get escalated.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ee;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --accent: #2a78d6; --good: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --accent: #3987e5; --good: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --accent: #3987e5; --good: #0ca30c;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 0 16px 80px; }
+header.hero { padding: 56px 0 32px; }
+.eyebrow { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 8px; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+h2 { font-size: 26px; margin: 64px 0 8px; letter-spacing: -0.01em; }
+h3 { font-size: 17px; margin: 0 0 4px; }
+p { margin: 0 0 14px; max-width: 72ch; }
+.lead { font-size: 18px; color: var(--ink-2); }
+.sub { color: var(--ink-2); margin-bottom: 20px; }
+code { font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; margin-top: 20px; }
+nav.toc a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--axis); }
+nav.toc a:hover { color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 24px 0 8px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.tile .v { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; }
+.tile .l { font-size: 13px; color: var(--ink-2); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 12px; min-width: 0; }
+.card p.cap { font-size: 14px; color: var(--ink-2); margin: 8px 0 4px; }
+.chart { position: relative; height: 280px; }
+.chart.tall { height: 340px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin: 2px 0 8px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.insight { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 20px 0; }
+.insight strong { display: block; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 13px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px 8px; }
+ol.findings { padding-left: 20px; } ol.findings li { margin-bottom: 10px; max-width: 72ch; }
+footer { margin-top: 64px; font-size: 13px; color: var(--muted); }
+.themebtn { position: fixed; top: 12px; right: 12px; background: var(--surface); color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+</style>
+</head>
+<body>
+<button class="themebtn" id="themebtn" type="button">Toggle theme</button>
+<main>
+<header class="hero">
+  <p class="eyebrow">WIUT Hackathon 2026 · Fintech / AI in Finance · Team 10x Engineers</p>
+  <h1>Which AML alerts get escalated?</h1>
+  <p class="lead">Automated monitoring raises anti-money-laundering alerts from a customer's transaction history; specialists dismiss most of them and escalate a few. We explored 7 million transactions behind 14,000 labeled alerts to learn what separates the two, and built a model that ranks new alerts by their probability of escalation.</p>
+  <div class="tiles" id="tiles"></div>
+  <nav class="toc">
+    <a href="#approach">Approach</a><a href="#data">Dataset</a><a href="#target">Target</a><a href="#tx">Transaction behaviour</a><a href="#time">Activity before a signal</a><a href="#diff">Escalated vs dismissed</a><a href="#model">Features &amp; model</a><a href="#conclusion">Conclusion</a>
+  </nav>
+</header>
+
+<section id="approach">
+  <h2>Our approach</h2>
+  <p>Each alert (<code>signal_id</code>) comes with a variable-length history of transactions from the 180 days before the alert date. The task is to rank alerts by their chance of escalation, measured by ROC-AUC. Our workflow:</p>
+  <ol class="findings">
+    <li><strong>Explore</strong> the alerts and the relational transaction table: coverage, timing artifacts, amount distributions by type and direction, and how escalated alerts differ from dismissed ones.</li>
+    <li><strong>Summarise each history into one row</strong>: counts, amount statistics, recent-window activity, burst behaviour, amount histograms, and — the key idea from EDA — <em>relative</em> features that compare each transaction type with the same customer's own typical level.</li>
+    <li><strong>Validate honestly</strong>: the test alerts are a random sample from the same period as training (not a time split), so we used stratified 5-fold cross-validation repeated over several seeds.</li>
+    <li><strong>Model</strong> with gradient-boosted trees (LightGBM), lightly blended with CatBoost and a regularised logistic regression.</li>
+  </ol>
+</section>
+
+<section id="data">
+  <h2>The dataset</h2>
+  <p class="sub">Synthetic, localised data. Two alert tables and two transaction tables linked by <code>signal_id</code>.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>File</th><th class="num">Rows</th><th>Columns</th></tr></thead>
+    <tbody id="filetable"></tbody>
+  </table></div>
+  <div class="insight"><strong>Data quality</strong>No missing values and no duplicate rows. Every alert has at least one transaction (1 – 2,279; median 461). Transactions span the 180 days before the alert date and end at the alert date, apart from 840 rows (21 alerts) timestamped later on the alert day itself. Test alerts cover exactly the same dates as training alerts, which is why we validate with random folds rather than a time split.</div>
+</section>
+
+<section id="target">
+  <h2>The target</h2>
+  <p class="sub" id="targetsub"></p>
+  <div class="grid2">
+    <div class="card"><h3>Alerts per month</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Train</span><span><i style="background:var(--s2)"></i>Test</span></div>
+      <div class="chart"><canvas id="c_month_n"></canvas></div>
+      <p class="cap">Train and test follow the same monthly pattern (busier from mid-2025 to mid-2026) — the test set is a random sample, not a future period.</p></div>
+    <div class="card"><h3>Escalation rate per month</h3>
+      <div class="chart" style="margin-top:28px"><canvas id="c_month_rate"></canvas></div>
+      <p class="cap">The rate stays between 14% and 21% with no trend, so the alert date alone carries almost no signal.</p></div>
+  </div>
+</section>
+
+<section id="tx">
+  <h2>Transaction behaviour</h2>
+  <p class="sub">Most activity is incoming card and bank-transfer traffic. Cash is 6% of transactions, international transfers 0.5%.</p>
+  <div class="grid2">
+    <div class="card"><h3>Transactions by type and direction</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Incoming (kirim)</span><span><i style="background:var(--s2)"></i>Outgoing (chiqim)</span></div>
+      <div class="chart"><canvas id="c_mix"></canvas></div>
+      <p class="cap">Money flows in about three times as often as it flows out, for every type.</p></div>
+    <div class="card"><h3>Amount index distribution by type</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Card</span><span><i style="background:var(--s2)"></i>Bank transfer</span><span><i style="background:var(--s3)"></i>Cash</span><span><i style="background:var(--s4)"></i>International</span></div>
+      <div class="chart"><canvas id="c_amt"></canvas></div>
+      <p class="cap">Each type has its own size level: card &lt; transfer &lt; cash &lt; international. Distributions have hard lower floors (e.g. card ≈ −2.27, transfer ≈ −2.91).</p></div>
+    <div class="card"><h3>Transactions by hour of day</h3>
+      <div class="chart"><canvas id="c_hour"></canvas></div>
+      <p class="cap">Flat across the day except hour 23, which has three times the normal volume.</p></div>
+    <div class="card"><h3>Inside hour 23: transactions per minute</h3>
+      <div class="chart"><canvas id="c_min"></canvas></div>
+      <p class="cap">The spike is concentrated in 23:57 – 23:59: bursts of many small transactions just before midnight.</p></div>
+  </div>
+  <div class="insight"><strong>Late-night bursts</strong><span id="burstnote"></span></div>
+</section>
+
+<section id="time">
+  <h2>Activity immediately before a signal</h2>
+  <div class="grid2">
+    <div class="card"><h3>Average transactions per alert, by days before the alert</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Dismissed</span><span><i style="background:var(--s2)"></i>Escalated</span></div>
+      <div class="chart tall"><canvas id="c_lag"></canvas></div>
+      <p class="cap">Day 0 (the alert day, ≈ 41 transactions per alert) is omitted so the rest of the window stays readable.</p></div>
+    <div class="card"><h3>Incoming vs outgoing, by days before the alert</h3>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Incoming</span><span><i style="background:var(--s2)"></i>Outgoing</span></div>
+      <div class="chart tall"><canvas id="c_lagdir"></canvas></div>
+      <p class="cap">Daily activity peaks about four months before the alert and then declines steadily toward it, in both directions — until the burst on the alert day itself.</p></div>
+  </div>
+  <div class="insight"><strong>The alert day dominates, but it is not what separates the classes</strong>On average an alert's history ends with a burst of ~41 transactions on the alert day itself; the last transaction is typically seconds before midnight. Escalated alerts are slightly busier across the whole window, but their timing <em>shape</em> is the same as dismissed ones, and features built on the last few transactions or on recent-vs-baseline activity scored near chance (AUC ≈ 0.49 – 0.61). Timing is how alerts are <em>triggered</em>, not how they are <em>judged</em>.</div>
+</section>
+
+<section id="diff">
+  <h2>Escalated vs dismissed alerts</h2>
+  <p class="sub">Type mix is identical between the classes (see table). What differs is the <em>size profile</em> of each customer's transactions.</p>
+  <div class="grid2">
+    <div class="card"><h3>Escalation rate by cash-deposit vs bank-transfer size</h3>
+      <div class="chart"><canvas id="c_cash"></canvas></div>
+      <p class="cap" id="cashcap"></p></div>
+    <div class="card"><h3>Escalation rate by outgoing bank-transfer size</h3>
+      <div class="chart"><canvas id="c_bo"></canvas></div>
+      <p class="cap" id="bocap"></p></div>
+    <div class="card"><h3>Escalation rate by number of tiny card transactions</h3>
+      <div class="chart"><canvas id="c_tiny"></canvas></div>
+      <p class="cap">Card transactions at the very bottom of the size range (index &lt; −2.2) — typical of card-testing — roughly double the escalation rate.</p></div>
+    <div class="card"><h3>Escalation rate by history length</h3>
+      <div class="chart"><canvas id="c_ntx"></canvas></div>
+      <p class="cap">Busier customers are escalated slightly more often (15% → 19% across deciles of transaction count).</p></div>
+  </div>
+  <h3 style="margin-top:24px">Average share of each transaction type per alert</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Type</th><th class="num">Dismissed</th><th class="num">Escalated</th></tr></thead>
+    <tbody id="sharetable"></tbody>
+  </table></div>
+  <div class="insight"><strong>Relative size is the signal</strong>Raw amount levels mostly measure how "big" a customer is — all eight direction×type averages are strongly correlated (ρ 0.5 – 0.84). The escalation signal lives in the <em>differences</em>: a customer whose cash deposits are large compared with their own bank transfers is almost three times as likely to be escalated (10% → 29%). Tree models are poor at learning differences of two columns, so we engineered them explicitly.</div>
+</section>
+
+<section id="model">
+  <h2>Features and modelling ideas motivated by the EDA</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Feature family</th><th>Why (EDA observation)</th><th class="num">OOF AUC alone</th></tr></thead>
+    <tbody>
+      <tr><td>Counts &amp; amount statistics per direction, type, and direction×type; recent windows 1–90 days</td><td>Customers differ in volume and size level; busier customers escalate slightly more</td><td class="num">0.640</td></tr>
+      <tr><td>Relative amounts: each group's mean/median/q90 minus the customer's overall level; all pairwise group differences</td><td>Escalation depends on <em>relative</em> size (cash vs transfers), not absolute</td><td class="num">0.648</td></tr>
+      <tr><td>Amount histograms per type × burst/normal; tiny-card and floor counts</td><td>Tiny card transactions and value floors carry signal; burst amounts differ</td><td class="num">0.631</td></tr>
+      <tr><td>Recent-vs-baseline activity, pass-through (in→out within 1–72h), burst events, first/last use of each type</td><td>Classic AML typologies; tested and found weak here</td><td class="num">0.611</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:16px">We combined the families (857 features), ranked them by LightGBM gain, and kept the top 100, which beat using all of them (0.663 vs 0.654) by removing noise. Final model:</p>
+  <div class="grid2">
+    <div class="card"><h3>Cross-validated ROC-AUC (5-fold × 5 seeds)</h3><div class="chart"><canvas id="c_models"></canvas></div>
+      <p class="cap">Final submission = probability blend 0.8 LightGBM + 0.1 CatBoost + 0.1 logistic regression.</p></div>
+    <div class="card"><h3>Top 15 features (LightGBM gain)</h3><div class="chart tall"><canvas id="c_imp"></canvas></div></div>
+  </div>
+</section>
+
+<section id="conclusion">
+  <h2>Conclusion</h2>
+  <ol class="findings">
+    <li><strong>Escalation is a weak, diffuse signal.</strong> 17.2% of alerts are escalated, steady over time; no single feature exceeds AUC 0.62, and our best model reaches ≈ 0.66 cross-validated.</li>
+    <li><strong>What matters is the shape of a customer's amounts, relative to themselves</strong> — large cash deposits and card spending relative to bank transfers raise escalation risk; large bank transfers on their own lower it.</li>
+    <li><strong>Tiny card transactions</strong> at the bottom of the size range double the escalation rate (16% → 30%+).</li>
+    <li><strong>Bursts before midnight</strong> are everywhere (99% of alerts, 8% of transactions) and mark how alerts are triggered — but timing, recency and pass-through features barely separate the classes.</li>
+    <li><strong>Modelling lesson:</strong> explicit difference features + feature selection beat throwing hundreds of raw aggregates at the model.</li>
+  </ol>
+</section>
+<footer>Team 10x Engineers (EC6D41A5) · WIUT Hackathon 2026 · Data are synthetic and contain no real customer records. Reproducible notebook in the project repository.</footer>
+</main>
+
+<script id="eda" type="application/json">__EDA__</script>
+<script id="rep" type="application/json">__REPORT__</script>
+<script>
+const D = JSON.parse(document.getElementById('eda').textContent);
+const R = JSON.parse(document.getElementById('rep').textContent);
+const fmt = n => n.toLocaleString('en-US');
+const pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+const TYPE = { karta: 'Card', bank_otkazmasi: 'Bank transfer', naqd: 'Cash', xalqaro: 'International' };
+
+// theme toggle (persisted per viewer)
+const root = document.documentElement;
+try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch (e) {}
+document.getElementById('themebtn').onclick = () => {
+  const dark = getComputedStyle(root).colorScheme === 'dark';
+  root.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+  drawAll();
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+
+const O = D.overview;
+document.getElementById('tiles').innerHTML = [
+  [fmt(O.train_signals + O.test_signals), 'alerts (14,000 train · 6,000 test)'],
+  [(O.train_tx + O.test_tx).toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }), 'transactions'],
+  [pct(O.pos_rate), 'of training alerts escalated'],
+  [R.blend_auc.toFixed(3), 'cross-validated ROC-AUC'],
+].map(([v, l]) => `<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+
+document.getElementById('filetable').innerHTML = [
+  ['train_signals.csv', O.train_signals, '<code>signal_id</code>, <code>signal_sanasi</code> (alert date), <code>eskalatsiya</code> (target)'],
+  ['test_signals.csv', O.test_signals, '<code>signal_id</code>, <code>signal_sanasi</code>'],
+  ['train_transactions.parquet', O.train_tx, '<code>signal_id</code>, <code>tranzaksiya_vaqti</code> (timestamp), <code>kirim_chiqim</code> (in/out), <code>tranzaksiya_turi</code> (card / bank transfer / cash / international), <code>miqdor_indeksi</code> (standardised size)'],
+  ['test_transactions.parquet', O.test_tx, 'same as train'],
+].map(r => `<tr><td><code>${r[0]}</code></td><td class="num">${fmt(r[1])}</td><td>${r[2]}</td></tr>`).join('');
+
+document.getElementById('targetsub').textContent =
+  `${fmt(O.pos)} of ${fmt(O.train_signals)} training alerts (${pct(O.pos_rate)}) were escalated — a moderately imbalanced binary target. ROC-AUC is rank-based, so we did not rebalance.`;
+
+const B = D.burst;
+document.getElementById('burstnote').textContent =
+  `${pct(B.share_tx)} of all transactions fall in 23:57–00:00, and ${pct(B.signals_with)} of alerts contain at least one such burst. A burst-day can hold hundreds of transactions; burst amounts are smaller than normal ones (mean index ${B.amt_mean_burst} vs ${B.amt_mean_normal}). We built burst features, but on their own they separate escalated from dismissed alerts only weakly (16% vs 18%).`;
+
+document.getElementById('sharetable').innerHTML = Object.entries(D.type_share_by_target)
+  .map(([k, v]) => `<tr><td>${TYPE[k]}</td><td class="num">${pct(v.dis)}</td><td class="num">${pct(v.esc)}</td></tr>`).join('');
+document.getElementById('cashcap').textContent =
+  `Deciles of (mean cash deposit − mean bank transfer), low → high. Escalation climbs from ${pct(D.cash_vs_transfer.rate[0], 0)} to ${pct(D.cash_vs_transfer.rate[9], 0)}; single-feature AUC ${D.cash_vs_transfer.auc}.`;
+document.getElementById('bocap').textContent =
+  `Deciles of mean outgoing transfer size, small → large. Larger transfers mean fewer escalations (${pct(D.transfer_level.rate[0], 0)} → ${pct(D.transfer_level.rate[9], 0)}).`;
+
+const charts = [];
+function css(v) { return getComputedStyle(root).getPropertyValue(v).trim(); }
+function base(extra = {}) {
+  const ink2 = css('--ink-2'), grid = css('--grid'), muted = css('--muted');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: ink2, borderColor: css('--axis'), borderWidth: 1, padding: 10, boxPadding: 4 } },
+    scales: {
+      x: { grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 12 } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted } },
+    },
+    ...extra,
+  };
+}
+function bar(color, data, label) { return { label, data, backgroundColor: color, borderRadius: 4, borderSkipped: 'bottom', barPercentage: 0.8, categoryPercentage: 0.8 }; }
+function line(color, data, label) { return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.2 }; }
+function mk(id, cfg) { charts.push(new Chart(document.getElementById(id), cfg)); }
+const pctAxis = { ticks: { callback: v => (v * 100).toFixed(0) + '%' } };
+const pctTip = { callbacks: { label: c => `${c.dataset.label || 'Escalation rate'}: ${(c.parsed.y * 100).toFixed(1)}%` } };
+function deep(a, b) { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) { a[k] = deep(a[k] || {}, b[k]); } else a[k] = b[k]; } return a; }
+function opt(extra) { return deep(base(), extra); }
+
+function drawAll() {
+  charts.splice(0).forEach(c => c.destroy());
+  const s1 = css('--s1'), s2 = css('--s2'), s3 = css('--s3'), s4 = css('--s4');
+  const M = D.monthly;
+  mk('c_month_n', { type: 'bar', data: { labels: M.month, datasets: [bar(s1, M.n, 'Train'), bar(s2, M.n_test, 'Test')] }, options: opt({ scales: { x: { stacked: true }, y: { stacked: true } } }) });
+  mk('c_month_rate', { type: 'line', data: { labels: M.month, datasets: [line(s2, M.rate, 'Escalation rate')] }, options: opt({ scales: { y: { min: 0, max: 0.3, ...pctAxis } }, plugins: { tooltip: pctTip } }) });
+  const X = D.mix;
+  mk('c_mix', { type: 'bar', data: { labels: X.types.map(t => TYPE[t]), datasets: [bar(s1, X.kirim, 'Incoming'), bar(s2, X.chiqim, 'Outgoing')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e6).toFixed(1) + 'M' } } } }) });
+  const A = D.amount_hist, mids = A.edges.slice(0, -1).map((e, i) => ((e + A.edges[i + 1]) / 2).toFixed(1));
+  mk('c_amt', { type: 'line', data: { labels: mids, datasets: [line(s1, A.karta, 'Card'), line(s2, A.bank_otkazmasi, 'Bank transfer'), line(s3, A.naqd, 'Cash'), line(s4, A.xalqaro, 'International')] }, options: opt({ scales: { x: { title: { display: true, text: 'miqdor_indeksi', color: css('--muted') }, ticks: { maxTicksLimit: 10 } }, y: { title: { display: true, text: 'density', color: css('--muted') } } } }) });
+  mk('c_hour', { type: 'bar', data: { labels: D.hour.map((_, i) => i), datasets: [bar(D.hour.map((_, i) => i === 23 ? s2 : s1), D.hour, 'Transactions')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e3) + 'k' } } } }) });
+  mk('c_min', { type: 'bar', data: { labels: D.minute23.map((_, i) => ':' + String(i).padStart(2, '0')), datasets: [bar(D.minute23.map((_, i) => i >= 57 ? s2 : s1), D.minute23, 'Transactions')] }, options: opt({ scales: { y: { ticks: { callback: v => (v / 1e3) + 'k' } } } }) });
+  const L = D.lag_profile;
+  mk('c_lag', { type: 'line', data: { labels: L.lag.slice(1), datasets: [line(s1, L.dis.slice(1), 'Dismissed'), line(s2, L.esc.slice(1), 'Escalated')] }, options: opt({ scales: { x: { reverse: true, title: { display: true, text: 'days before alert', color: css('--muted') }, ticks: { maxTicksLimit: 10 } } } }) });
+  mk('c_lagdir', { type: 'line', data: { labels: L.lag.slice(1), datasets: [line(s1, D.lag_dir.kirim.slice(1), 'Incoming'), line(s2, D.lag_dir.chiqim.slice(1), 'Outgoing')] }, options: opt({ scales: { x: { reverse: true, title: { display: true, text: 'days before alert', color: css('--muted') }, ticks: { maxTicksLimit: 10 } } } }) });
+  const dec = [...Array(10)].map((_, i) => 'D' + (i + 1));
+  const rateBar = (id, labels, data, xt) => mk(id, { type: 'bar', data: { labels, datasets: [bar(s1, data, 'Escalation rate')] }, options: opt({ scales: { y: { min: 0, ...pctAxis }, x: { title: { display: !!xt, text: xt, color: css('--muted') } } }, plugins: { tooltip: pctTip } }) });
+  rateBar('c_cash', dec, D.cash_vs_transfer.rate, 'decile: cash deposits small → large relative to transfers');
+  rateBar('c_bo', dec, D.transfer_level.rate, 'decile: outgoing transfer size small → large');
+  rateBar('c_tiny', D.tiny_card.label, D.tiny_card.rate, 'tiny card transactions per alert');
+  rateBar('c_ntx', D.tx_decile.label, D.tx_decile.rate, 'transactions per alert (decile)');
+  const MR = R.oof_auc;
+  mk('c_models', { type: 'bar', data: { labels: ['Logistic reg.', 'CatBoost', 'LightGBM', 'Final blend'], datasets: [bar([s1, s1, s1, s2], [MR.lr, MR.cat, MR.lgbm, R.blend_auc], 'ROC-AUC')] }, options: opt({ indexAxis: 'y', scales: { x: { min: 0.6, max: 0.68, grid: { display: true, color: css('--grid') } }, y: { grid: { display: false } } }, plugins: { tooltip: { callbacks: { label: c => 'ROC-AUC ' + c.parsed.x.toFixed(4) } } } }) });
+  const I = R.importance.slice(0, 15);
+  mk('c_imp', { type: 'bar', data: { labels: I.map(r => r[0]), datasets: [bar(s1, I.map(r => r[1]), 'Share of gain')] }, options: opt({ indexAxis: 'y', scales: { x: { grid: { display: true, color: css('--grid') }, ticks: { callback: v => (v * 100).toFixed(0) + '%' } }, y: { grid: { display: false }, ticks: { font: { size: 11 }, autoSkip: false } } }, plugins: { tooltip: { callbacks: { label: c => (c.parsed.x * 100).toFixed(1) + '% of total gain' } } } }) });
+}
+drawAll();
+</script>
+</body>
+</html>
