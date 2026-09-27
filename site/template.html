@@ -91,7 +91,7 @@ footer { margin-top: 64px; font-size: 13px; color: var(--muted); }
   <ol class="findings">
     <li><strong>Explore</strong> the alerts and the relational transaction table: coverage, timing artifacts, amount distributions by type and direction, and how escalated alerts differ from dismissed ones.</li>
     <li><strong>Summarise each history into one row</strong>: counts, amount statistics, recent-window activity, burst behaviour, amount histograms, and — the key idea from EDA — <em>relative</em> features that compare each transaction type with the same customer's own typical level.</li>
-    <li><strong>Validate honestly</strong>: the test alerts are a random sample from the same period as training (not a time split), so we used stratified 5-fold cross-validation repeated over several seeds.</li>
+    <li><strong>Validate honestly</strong>: the test alerts are a random sample from the same period as training (not a time split), so we used stratified 5-fold cross-validation repeated over several seeds, with feature selection re-done inside each fold (nested) for the headline estimate.</li>
     <li><strong>Model</strong> with gradient-boosted trees (LightGBM), lightly blended with CatBoost and a regularised logistic regression.</li>
   </ol>
 </section>
@@ -193,10 +193,10 @@ footer { margin-top: 64px; font-size: 13px; color: var(--muted); }
       <tr><td>Recent-vs-baseline activity, pass-through (in→out within 1–72h), burst events, first/last use of each type</td><td>Classic AML typologies; tested and found weak here</td><td class="num">0.611</td></tr>
     </tbody>
   </table></div>
-  <p style="margin-top:16px">We combined the families (857 features), ranked them by LightGBM gain, and kept the top 100, which beat using all of them (0.663 vs 0.654) by removing noise. Final model:</p>
+  <p style="margin-top:16px">We combined the families (857 features), ranked them by LightGBM gain, and kept the top 100 for a smaller, faster model. Under nested cross-validation (selection re-done inside each fold) the top-100 model scores ≈ 0.656 — the same as using all 857 features (0.655) — so selection did not improve accuracy. Final model:</p>
   <div class="grid2">
-    <div class="card"><h3>Cross-validated ROC-AUC (5-fold × 5 seeds)</h3><div class="chart"><canvas id="c_models"></canvas></div>
-      <p class="cap">Final submission = probability blend 0.8 LightGBM + 0.1 CatBoost + 0.1 logistic regression.</p></div>
+    <div class="card"><h3>Out-of-fold ROC-AUC per model (5-fold × 5 seeds)</h3><div class="chart"><canvas id="c_models"></canvas></div>
+      <p class="cap">Final submission = probability blend 0.8 LightGBM + 0.1 CatBoost + 0.1 logistic regression. These out-of-fold scores use a feature list ranked on all training data, so they are optimistic by ≈ 0.007; the nested estimate is ≈ 0.656. Use them to compare models, not as the expected score.</p></div>
     <div class="card"><h3>Top 15 features (LightGBM gain)</h3><div class="chart tall"><canvas id="c_imp"></canvas></div></div>
   </div>
 </section>
@@ -204,11 +204,11 @@ footer { margin-top: 64px; font-size: 13px; color: var(--muted); }
 <section id="conclusion">
   <h2>Conclusion</h2>
   <ol class="findings">
-    <li><strong>Escalation is a weak, diffuse signal.</strong> 17.2% of alerts are escalated, steady over time; no single feature exceeds AUC 0.62, and our best model reaches ≈ 0.66 cross-validated.</li>
+    <li><strong>Escalation is a weak, diffuse signal.</strong> 17.2% of alerts are escalated, steady over time; no single feature exceeds AUC 0.62, and our model reaches ≈ 0.656 ROC-AUC under nested cross-validation.</li>
     <li><strong>What matters is the shape of a customer's amounts, relative to themselves</strong> — large cash deposits and card spending relative to bank transfers raise escalation risk; large bank transfers on their own lower it.</li>
     <li><strong>Tiny card transactions</strong> at the bottom of the size range double the escalation rate (16% → 30%+).</li>
     <li><strong>Bursts before midnight</strong> are everywhere (99% of alerts, 8% of transactions) and mark how alerts are triggered — but timing, recency and pass-through features barely separate the classes.</li>
-    <li><strong>Modelling lesson:</strong> explicit difference features + feature selection beat throwing hundreds of raw aggregates at the model.</li>
+    <li><strong>Modelling lesson:</strong> explicit difference features added the most (+0.013 AUC over base aggregates); timing/pass-through features and gain-based feature selection did not improve nested cross-validated AUC.</li>
   </ol>
 </section>
 <footer>Team 10x Engineers (EC6D41A5) · WIUT Hackathon 2026 · Data are synthetic and contain no real customer records. Reproducible notebook in the project repository.</footer>
@@ -239,7 +239,7 @@ document.getElementById('tiles').innerHTML = [
   [fmt(O.train_signals + O.test_signals), 'alerts (14,000 train · 6,000 test)'],
   [(O.train_tx + O.test_tx).toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }), 'transactions'],
   [pct(O.pos_rate), 'of training alerts escalated'],
-  [R.blend_auc.toFixed(3), 'cross-validated ROC-AUC'],
+  ['≈0.656', 'ROC-AUC, nested cross-validation'],
 ].map(([v, l]) => `<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
 
 document.getElementById('filetable').innerHTML = [

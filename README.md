@@ -2,7 +2,7 @@
 
 WIUT Hackathon 2026, Fintech / AI in Finance track. The model predicts the probability that an AML alert gets escalated (the metric is ROC-AUC). The full task description is in [TASK.md](TASK.md).
 
-**Result:** cross-validated ROC-AUC **0.663** (stratified 5-fold × 5 seeds).
+**Result:** ROC-AUC **≈ 0.656** under nested cross-validation (stratified 5-fold, feature selection re-done inside each fold). The out-of-fold AUC printed by `train.py` (≈ 0.663) is optimistic by about 0.007 because the top-100 feature list was ranked on all training data.
 
 ## Deliverables
 | | |
@@ -26,7 +26,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt jupyter
 | `features3.py` | **Relative** features: each group compared with the customer's own overall level, plus pairwise group differences |
 | `features4.py` | Amount histograms per type × burst/normal; tiny-card and floor counts |
 | `features2.py` | Recent-vs-baseline activity and pass-through features. Tested but not used (weaker) |
-| `select_features.py` | Ranks the 857 features by LightGBM gain; the model keeps the top 100 |
+| `select_features.py` | Ranks the 857 features by LightGBM gain; the model keeps the top 100 (a smaller model; under nested CV it scores the same as all 857 features, so it is not an accuracy gain) |
 | `train.py` | LightGBM + CatBoost + logistic regression, 5-fold × 5 seeds, blended 0.8/0.1/0.1 → submission |
 | `eda_data.py`, `build_site.py`, `site/template.html` | EDA numbers and the static website |
 

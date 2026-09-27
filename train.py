@@ -39,7 +39,7 @@ def catb(seed):
 
 def logreg():
     return make_pipeline(SimpleImputer(strategy="median", add_indicator=True),
-                         QuantileTransformer(output_distribution="normal", n_quantiles=200),
+                         QuantileTransformer(output_distribution="normal", n_quantiles=200, random_state=0),
                          LogisticRegression(C=0.003, max_iter=3000))
 
 
