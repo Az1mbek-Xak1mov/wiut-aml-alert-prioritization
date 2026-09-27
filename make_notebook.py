@@ -50,7 +50,7 @@ for split in ['train', 'test']:
     features3.build(split).to_parquet(f'data/feat3_{split}.parquet')
     features4.build(split).to_parquet(f'data/feat4_{split}.parquet')
     print(split, 'done')""")
-md("## 3. Feature selection\nRank all 857 features by LightGBM gain over 5-fold × 3 seeds; the final model keeps the top 100 (0.663 vs 0.654 with all features).")
+md("## 3. Feature selection\nRank all 857 features by LightGBM gain over 5-fold × 3 seeds; the final model keeps the top 100 for a smaller, faster model. Under nested cross-validation, the top-100 model scores ≈0.656, essentially the same as all 857 features (≈0.655).")
 code("%run select_features.py")
 md("## 4. Final model\nStratified 5-fold × 5 seeds. LightGBM (fixed 380 trees, found by early stopping in CV), CatBoost, and quantile-transformed logistic regression; probability blend 0.8 / 0.1 / 0.1. Test predictions average the 25 fold models.")
 code("%run train.py")
